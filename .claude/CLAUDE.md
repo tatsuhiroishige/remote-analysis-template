@@ -132,8 +132,10 @@ mcp__notion__notion-create-pages
 
 | Topic | File |
 |-------|------|
+| **Operations policy** | `.claude/rules/operations-policy.md` |
 | **Todo workflow** | `.claude/rules/todo-workflow.md` |
 | **Macro coding rules** | `.claude/rules/macro-rules.md` |
+| **Macro editing** | `.claude/rules/macro-editing.md` |
 | **Editing policy** | `.claude/rules/editing-policy.md` |
 | **Add histogram** | `.claude/skills/add-histogram.md` |
 | **Add canvas** | `.claude/skills/add-canvas.md` |
