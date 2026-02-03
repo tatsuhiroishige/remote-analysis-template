@@ -1,0 +1,30 @@
+# Sensitive configuration
+config/discord_webhook.txt
+config/discord_bot_token.txt
+
+# Python
+**/__pycache__/
+*.pyc
+**/venv/
+
+# Temporary execution scripts
+scripts/*.sh
+scripts/*.py
+!scripts/.gitkeep
+
+# Output files (user-specific)
+output/*
+!output/.gitkeep
+QA/*
+!QA/.gitkeep
+
+# macOS
+.DS_Store
+
+# Editor files
+*.swp
+*.swo
+*~
+
+# Claude Code local settings
+.claude/settings.local.json
