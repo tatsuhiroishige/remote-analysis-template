@@ -11,12 +11,19 @@ trigger: always_on
 - Edit macros on remote server (always backup to `.bak` first)
 - Save tmux output to local `output/` directory
 - Upload QA plots to Discord, log to Notion
-- Create temporary scripts in local `scripts/` directory (for scp to remote)
 - Create/update todo files in local `todo/` directory
+
+## Local File Editing
+
+**Only `scripts/` directory is writable for code/scripts.**
+
+- Create/edit shell scripts, Python scripts, patch files in `scripts/`
+- These are temporary files for scp to remote server
+- Do NOT edit files outside `scripts/` (except `todo/*.md`)
 
 ## Forbidden Operations
 
-- Local editing of source code, macros, or analysis files
+- Edit any local files outside `scripts/` and `todo/`
 - Destructive commands: `rm -rf`, `chmod -R`, `chown`
 - ROOT only exists on remote server (never run locally)
 - Building or compiling locally
