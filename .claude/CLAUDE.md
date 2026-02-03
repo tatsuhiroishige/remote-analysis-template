@@ -8,6 +8,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 All source code, data, and build products exist only on the remote server. This local directory is controller-only.
 
+## Todo Workflow (IMPORTANT)
+
+**Before starting any multi-step task:**
+1. Create todo list → 2. Present to user → 3. **Ask approval** → 4. Execute
+
+See `.claude/rules/todo-workflow.md`
+
 ## Environment
 
 > **IMPORTANT**: Edit these values to match your setup!
@@ -44,6 +51,7 @@ ssh $HOST "tmux send-keys -t claude '.q' Enter"
 
 | Skill | Description |
 |-------|-------------|
+| `/start-analysis <desc>` | Start analysis workflow (plan → approve → execute) |
 | `/run-macro <name> [param]` | Run ROOT macro via tmux |
 | `/check-tmux [lines]` | Check tmux session output |
 | `/ifarm-status` | Verify SSH and tmux status |
@@ -124,8 +132,10 @@ mcp__notion__notion-create-pages
 
 | Topic | File |
 |-------|------|
+| **Todo workflow** | `.claude/rules/todo-workflow.md` |
 | **Macro coding rules** | `.claude/rules/macro-rules.md` |
 | **Macro creation guide** | `.claude/rules/macro-creation.md` |
+| **Macro editing policy** | `.claude/rules/macro-editing.md` |
 | Your analysis docs | `docs/*.md` |
 
 ## Troubleshooting

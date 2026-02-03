@@ -99,6 +99,12 @@ Run the acceptance study macro with default parameters
 
 ## Available Skills (Commands)
 
+### Workflow
+
+| Skill | Description | Example |
+|-------|-------------|---------|
+| `/start-analysis <desc>` | Start full workflow (plan → approve → run) | `/start-analysis Study acceptance with 10 files` |
+
 ### Core Analysis
 
 | Skill | Description | Example |
