@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Macro Editing Policy
 
 ## Typical Analysis Structure
