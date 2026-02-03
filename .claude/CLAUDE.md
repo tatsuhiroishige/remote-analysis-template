@@ -134,8 +134,10 @@ mcp__notion__notion-create-pages
 |-------|------|
 | **Todo workflow** | `.claude/rules/todo-workflow.md` |
 | **Macro coding rules** | `.claude/rules/macro-rules.md` |
-| **Macro creation guide** | `.claude/rules/macro-creation.md` |
-| **Macro editing policy** | `.claude/rules/macro-editing.md` |
+| **Editing policy** | `.claude/rules/editing-policy.md` |
+| **Add histogram** | `.claude/skills/add-histogram.md` |
+| **Add canvas** | `.claude/skills/add-canvas.md` |
+| **Add fitting** | `.claude/skills/add-fitting.md` |
 | Your analysis docs | `docs/*.md` |
 
 ## Troubleshooting
