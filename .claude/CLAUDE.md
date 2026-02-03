@@ -132,6 +132,7 @@ mcp__notion__notion-create-pages
 
 | Topic | File |
 |-------|------|
+| **Analysis guide** | `docs/analysis_guide.md` |
 | **Operations policy** | `.claude/rules/operations-policy.md` |
 | **Todo workflow** | `.claude/rules/todo-workflow.md` |
 | **Macro coding rules** | `.claude/rules/macro-rules.md` |

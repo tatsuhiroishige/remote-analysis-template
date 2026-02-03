@@ -258,8 +258,14 @@ Edit files in `.claude/skills/` if needed:
 
 ### Step 3: Add Your Documentation
 
-Create docs in `docs/` for:
-- Cut definitions
+See `docs/analysis_guide.md` for a comprehensive guide on:
+- Cut flow patterns
+- Background estimation techniques
+- Signal extraction methods
+- Systematic uncertainties
+
+Create additional docs in `docs/` for:
+- Your specific cut definitions
 - Physics background
 - Histogram naming conventions
 
