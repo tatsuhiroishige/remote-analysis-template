@@ -11,12 +11,15 @@ trigger: always_on
 - Edit macros on remote server (always backup to `.bak` first)
 - Save tmux output to local `output/` directory
 - Upload QA plots to Discord, log to Notion
+- Create temporary scripts in local `scripts/` directory (for scp to remote)
+- Create/update todo files in local `todo/` directory
 
 ## Forbidden Operations
 
-- Local file creation, editing, building, or git operations
+- Local editing of source code, macros, or analysis files
 - Destructive commands: `rm -rf`, `chmod -R`, `chown`
 - ROOT only exists on remote server (never run locally)
+- Building or compiling locally
 
 ## Log-First Principle
 
