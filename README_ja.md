@@ -333,55 +333,6 @@ docs/
 | MCPサーバーが起動しない | `uv` がインストール済みか確認: `pip install uv` |
 | シェルのクォート問題 | MCP `run(cmd)` はローカルtmux経由で処理 — 直接SSHは避ける |
 
-## マクロ規約
-
-### 命名規則
-
-| タイプ | パターン | 例 |
-|-------|---------|-----|
-| 調査 | `study<Topic>.C` | `studyAcceptance.C` |
-| 選択 | `select<What>.C` | `selectEvents.C` |
-| 計算 | `calc<What>.C` | `calcEfficiency.C` |
-| 適用 | `apply<What>.C` | `applyCorrection.C` |
-| 比較 | `compare<What>.C` | `compareDataMC.C` |
-| 描画 | `plot<What>.C` | `plotResults.C` |
-
-### 標準フロー
-
-```
-INPUT → HISTOGRAMS → EVENT LOOP → POST-LOOP → CANVAS → OUTPUT
-```
-
-### 最小テンプレート
-
-```cpp
-#ifndef ANALYSIS_C
-#define ANALYSIS_C
-
-#include "commonFunctions.C"
-#include "commonParams.C"
-#include "ReadParam.C"
-
-void analysis(std::string param_file = "../param/params.json") {
-    ReadParam* rp = new ReadParam(param_file);
-    rp->ConfigParams();
-    rp->PrintParams();
-
-    gROOT->SetBatch(par::batch_flag);
-    gBenchmark->Start("timer");
-
-    // INPUT: データ読み込み
-    // HISTOGRAMS: ヒストグラム定義
-    // EVENT LOOP: ヒストグラム充填
-    // POST-LOOP: フィッティング、計算
-    // CANVAS: 描画
-    // OUTPUT: PDFとROOTファイル保存
-
-    gBenchmark->Show("timer");
-}
-#endif
-```
-
 ## ライセンス
 
 MIT License — 自由に実験に合わせて改変してください。

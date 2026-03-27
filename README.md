@@ -358,55 +358,6 @@ See `scripts/README_discord_bot.md` for full setup guide.
 | MCP server not starting | Check `uv` is installed: `pip install uv` |
 | Shell quoting errors | MCP `run(cmd)` handles quoting via local tmux — avoid raw SSH |
 
-## Macro Conventions
-
-### Naming
-
-| Type | Pattern | Example |
-|------|---------|---------|
-| Study | `study<Topic>.C` | `studyAcceptance.C` |
-| Selection | `select<What>.C` | `selectEvents.C` |
-| Calculation | `calc<What>.C` | `calcEfficiency.C` |
-| Application | `apply<What>.C` | `applyCorrection.C` |
-| Comparison | `compare<What>.C` | `compareDataMC.C` |
-| Plot | `plot<What>.C` | `plotResults.C` |
-
-### Standard Flow
-
-```
-INPUT → HISTOGRAMS → EVENT LOOP → POST-LOOP → CANVAS → OUTPUT
-```
-
-### Minimal Template
-
-```cpp
-#ifndef ANALYSIS_C
-#define ANALYSIS_C
-
-#include "commonFunctions.C"
-#include "commonParams.C"
-#include "ReadParam.C"
-
-void analysis(std::string param_file = "../param/params.json") {
-    ReadParam* rp = new ReadParam(param_file);
-    rp->ConfigParams();
-    rp->PrintParams();
-
-    gROOT->SetBatch(par::batch_flag);
-    gBenchmark->Start("timer");
-
-    // INPUT: Load data
-    // HISTOGRAMS: Define histograms
-    // EVENT LOOP: Fill histograms
-    // POST-LOOP: Fit, calculate
-    // CANVAS: Draw
-    // OUTPUT: Save PDF and ROOT file
-
-    gBenchmark->Show("timer");
-}
-#endif
-```
-
 ## License
 
 MIT License — Feel free to adapt for your experiment.
