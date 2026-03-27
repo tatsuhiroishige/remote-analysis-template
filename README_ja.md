@@ -211,22 +211,6 @@ remote-analysis-template/
 └── .mcp.json                      # MCPサーバー登録
 ```
 
-### リモート（作業ディレクトリ）
-
-```
-<PROJECT_DIR>/
-├── macro/          # ROOT解析マクロ
-│   ├── commonFunctions.C
-│   ├── commonParams.C
-│   ├── ReadParam.C
-│   └── yourAnalysis.C
-├── param/          # JSONパラメータファイル
-├── common/         # 共有モジュール
-├── root/           # 出力ROOTファイル
-├── pic/            # 出力PDFファイル
-└── log/            # 解析ログ
-```
-
 ## MCPツールリファレンス
 
 ### ファイル編集（nvim経由）

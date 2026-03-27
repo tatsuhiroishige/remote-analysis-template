@@ -225,22 +225,6 @@ remote-analysis-template/
 └── .gitignore
 ```
 
-### Remote (Your Working Directory)
-
-```
-<PROJECT_DIR>/
-├── macro/          # ROOT analysis macros
-│   ├── commonFunctions.C
-│   ├── commonParams.C
-│   ├── ReadParam.C
-│   └── yourAnalysis.C
-├── param/          # JSON parameter files
-├── common/         # Shared modules
-├── root/           # Output ROOT files
-├── pic/            # Output PDF files
-└── log/            # Analysis logs
-```
-
 ## MCP Tools Reference
 
 The MCP server exposes these tools to Claude:
