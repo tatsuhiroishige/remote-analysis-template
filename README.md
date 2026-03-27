@@ -1,38 +1,48 @@
-# Remote Analysis System with Claude Code
+# Remote Analysis Framework for Claude Code
 
-A framework for controlling ROOT-based physics analysis on remote computing clusters using [Claude Code](https://claude.ai/code) as an AI-powered operator.
+A framework for running ROOT-based physics analysis on remote computing servers using [Claude Code](https://claude.ai/code) as an AI-powered remote operator.
 
 ## Overview
 
-This system enables you to run particle physics analyses on remote computing clusters through natural language conversation with Claude Code. Instead of manually SSH-ing, writing scripts, and monitoring jobs, you simply describe what you want to analyze and Claude handles the execution.
+This system lets you control particle physics analyses on remote servers through natural language conversation with Claude Code. Claude operates your remote server via an MCP (Model Context Protocol) server, editing files with nvim, running macros, and monitoring output — all through SSH + tmux with full visibility.
 
-**Key Concept**: Claude Code acts as a *remote operator*, not a local developer. All source code, data, and computations exist on the remote server. This local repository contains only controller scripts and documentation.
+**Key Concept**: Claude Code acts as a *remote operator*. All source code, data, and computation live on the remote server. This local repository contains only the controller (MCP server, scripts, rules, documentation).
 
-## Table of Contents
+## Architecture
 
-- [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Architecture](#architecture)
-- [Available Commands](#available-commands)
-- [Configuration](#configuration)
-- [Directory Structure](#directory-structure)
-- [Customization](#customization)
-- [Troubleshooting](#troubleshooting)
+```
+Local Machine                              Remote Server
+┌────────────────────────────┐            ┌────────────────────────────┐
+│  Claude Code CLI           │            │  tmux session "claude"     │
+│    │                       │    SSH     │    │                       │
+│    ├─ MCP Server ──────────┼───────────►│    ├─ nvim (file editing)  │
+│    │  (remote_mcp_server.py)│           │    └─ terminal (commands)  │
+│    │                       │            │                            │
+│    ├─ Rules & Skills       │            │  Working Directory:        │
+│    ├─ Agents               │            │  ├── macro/   (ROOT macros)│
+│    └─ Hooks                │            │  ├── param/   (JSON config)│
+│                            │            │  ├── root/    (output ROOT)│
+│  tmux session "remote-server"│           │  ├── pic/     (output PDF) │
+│    └─ SSH → remote tmux    │            │  └── log/     (logs)       │
+└────────────────────────────┘            └────────────────────────────┘
+```
 
----
+### How It Works
+
+1. **MCP Server** (`scripts/remote_mcp_server.py`) provides tools for file editing (via nvim), command execution, and session management — all over SSH
+2. **Rules** (`.claude/rules/`) define coding conventions, editing workflow, safety policies, and communication style
+3. **Skills** (`.claude/skills/`) are slash commands (`/analysis`, `/plotting`, `/remote-ide`, etc.) that guide Claude through common workflows
+4. **Agents** (`.claude/agents/`) are specialized subagents for building, code exploration, data inspection, and physics review
+5. **Hooks** (`.claude/hooks/`) enforce safety (block dangerous commands), remind about post-edit verification, and handle context compaction
 
 ## Prerequisites
 
-### 1. Remote Server Access
+### 1. SSH Access with ControlMaster
 
-You need SSH access to a computing cluster where your analysis runs.
-
-### 2. SSH Configuration
-
-Configure passwordless SSH access. Add to `~/.ssh/config`:
+Add to `~/.ssh/config`:
 
 ```
-Host myserver
+Host remote-server
     HostName your-server.example.com
     User your-username
     IdentityFile ~/.ssh/id_rsa
@@ -41,374 +51,282 @@ Host myserver
     ControlPersist 600
 ```
 
-Create the sockets directory:
 ```bash
 mkdir -p ~/.ssh/sockets
+ssh remote-server "echo 'Connection OK'"
 ```
 
-Test the connection:
-```bash
-ssh myserver "echo 'Connection successful'"
-```
-
-### 3. tmux Session on Remote Server
-
-Create a persistent tmux session:
+### 2. Remote tmux Session
 
 ```bash
-ssh myserver "tmux new-session -d -s claude"
+ssh remote-server "tmux new-session -d -s claude"
 ```
 
-Verify:
-```bash
-ssh myserver "tmux has-session -t claude && echo 'Session exists'"
-```
+### 3. Claude Code CLI
 
-### 4. Claude Code CLI
-
-Install Claude Code:
 ```bash
 npm install -g @anthropic-ai/claude-code
 ```
 
-Or via Homebrew:
+### 4. Python Dependencies (for MCP server)
+
 ```bash
-brew install claude-code
+pip install mcp  # or: uv add mcp
 ```
 
-### 5. ROOT Environment on Remote Server
+### 5. ROOT on Remote Server
 
-Ensure ROOT is available in your remote environment. Add to your shell config (`.bashrc`, `.cshrc`, etc.):
+Ensure ROOT is available in your remote shell environment (`.bashrc`, `.cshrc`, etc.):
 
 ```bash
 source /path/to/root/bin/thisroot.sh
 ```
-
----
 
 ## Quick Start
 
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/your-username/remote-analysis.git
-cd remote-analysis
+git clone https://github.com/tatsuhiroishige/remote-analysis-template.git
+cd remote-analysis-template
 ```
 
-Edit `.claude/CLAUDE.md` to set your:
-- SSH host alias
-- Working directory path
-- tmux session name
+### 2. Edit configuration
 
-### 2. Start Claude Code
+Update these files with your server details:
+
+| File | What to change |
+|------|---------------|
+| `.claude/CLAUDE.md` | WORKDIR, shell type, tmux session names |
+| `scripts/remote_mcp_server.py` | `REMOTE`, `WORKDIR`, `SETUP_CMD`, `LOCAL_PANE` |
+| `scripts/remote_cli.sh` | `REMOTE`, `WORKDIR`, `LOCAL_PANE` |
+| `scripts/local_tmux_init.sh` | SSH alias, tmux session name |
+
+### 3. Initialize local tmux
+
+```bash
+./scripts/local_tmux_init.sh
+```
+
+### 4. Start Claude Code
 
 ```bash
 claude
 ```
 
-### 3. Run your first analysis
+### 5. Start working
 
 ```
-/run-macro myAnalysis params.json
+> Run the study macro with default parameters
+> Check if it's still running
+> Show me the output PDF
 ```
-
-### 4. Check progress
-
-```
-/check-tmux
-```
-
-### 5. Fetch results
-
-```
-/fetch-output results.pdf
-```
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Your Local Machine                        │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │                      Claude Code CLI                       │  │
-│  │                                                            │  │
-│  │  • Natural language interface                              │  │
-│  │  • Reads CLAUDE.md for context                            │  │
-│  │  • Executes skills (commands)                             │  │
-│  │  • Manages file transfers                                  │  │
-│  └───────────────────────────────────────────────────────────┘  │
-│                              │                                   │
-│                         SSH / SCP                                │
-│                              │                                   │
-└──────────────────────────────┼───────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                       Remote Server                              │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │                   tmux session: claude                     │  │
-│  │                                                            │  │
-│  │  • Runs ROOT macros                                       │  │
-│  │  • Processes data files                                   │  │
-│  │  • Generates output (ROOT, PDF)                           │  │
-│  └───────────────────────────────────────────────────────────┘  │
-│                                                                  │
-│  Working Directory:                                              │
-│  ├── macro/    ← ROOT analysis macros                           │
-│  ├── param/    ← JSON configuration files                       │
-│  ├── root/     ← Output ROOT files                              │
-│  ├── pic/      ← Output PDF plots                               │
-│  └── log/      ← Analysis logs                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Why This Architecture?
-
-1. **Persistent Sessions**: tmux keeps your analysis running even if your connection drops
-2. **Shell Compatibility**: Handles different shells (bash, tcsh, zsh) via script files
-3. **Natural Language**: Describe analyses in plain English
-4. **Automated Monitoring**: Claude watches progress and reports results
-5. **Integrated Logging**: Results can be sent to Notion/Discord automatically
-
----
-
-## Available Commands
-
-### Core Analysis Commands
-
-| Command | Description | Example |
-|---------|-------------|---------|
-| `/run-macro <name> [param]` | Run a ROOT macro | `/run-macro analysis params.json` |
-| `/check-tmux [lines]` | View tmux session output | `/check-tmux 50` |
-| `/check-root <file> [cmd]` | Inspect ROOT file contents | `/check-root output.root` |
-| `/fetch-output <file>` | Download output files | `/fetch-output results.pdf` |
-| `/edit-remote <path> <old> <new>` | Edit files on remote server | `/edit-remote macro/test.C "old" "new"` |
-
-### Session Management
-
-| Command | Description | Example |
-|---------|-------------|---------|
-| `/remote-status` | Check SSH and tmux status | `/remote-status` |
-| `/kill-root [method]` | Stop a stuck ROOT session | `/kill-root interrupt` |
-
-### Reporting Commands
-
-| Command | Description | Example |
-|---------|-------------|---------|
-| `/upload-qa <file> [desc]` | Upload QA plot to Discord | `/upload-qa plot.pdf "Cut study"` |
-| `/log-notion <title>` | Create Notion log entry | `/log-notion "Analysis Results"` |
-
-### Natural Language
-
-You can also use natural language:
-
-- "Run the vertex cut study"
-- "Check if the analysis is still running"
-- "Show me the last 100 lines of output"
-- "Download the PDF output"
-- "What histograms are in the output file?"
-
----
-
-## Configuration
-
-### Parameter Files (JSON)
-
-Each macro can have a corresponding parameter file:
-
-```json
-{
-    "flags": {
-        "pdf_flag": true,
-        "batch_flag": true
-    },
-    "data": {
-        "input_path": "/path/to/data/",
-        "file_count": 10
-    },
-    "output": {
-        "root_name": "analysis_output",
-        "pic_name": "analysis_plots"
-    },
-    "cuts": {
-        "pt_min": 0.5,
-        "eta_max": 2.5
-    }
-}
-```
-
-### Modifying Parameters Remotely
-
-```bash
-/edit-remote param/params.json '"file_count": 10' '"file_count": 100'
-```
-
----
 
 ## Directory Structure
 
 ### Local (This Repository)
 
 ```
-remote-analysis/
+remote-analysis-template/
 ├── .claude/
-│   ├── CLAUDE.md              # Main instructions for Claude (EDIT THIS)
+│   ├── CLAUDE.md                  # Main configuration (EDIT THIS)
+│   ├── settings.json              # MCP server & hooks config
 │   ├── rules/
-│   │   ├── macro-rules.md     # Coding standards
-│   │   └── macro-creation.md  # Macro template guide
-│   └── skills/
-│       ├── run-macro.md       # /run-macro implementation
-│       ├── check-tmux.md      # /check-tmux implementation
-│       └── ...                # Other skills
+│   │   ├── coding.md              # Coding conventions (ROOT/C++)
+│   │   ├── editing.md             # Remote file editing workflow (MCP tools)
+│   │   ├── safety.md              # Allowed/forbidden operations
+│   │   ├── communication.md       # Todo workflow, Discord, Notion logging
+│   │   ├── documentation.md       # Auto-update docs policy
+│   │   └── self-improvement.md    # Lesson tracking from mistakes
+│   ├── skills/
+│   │   ├── analysis/SKILL.md      # /analysis — full analysis workflow
+│   │   ├── remote-ide/SKILL.md    # /remote-ide — session management
+│   │   ├── plotting/SKILL.md      # /plotting — ROOT plotting & QA upload
+│   │   ├── job-submission/SKILL.md # /job-submission — batch jobs
+│   │   ├── monte-carlo/SKILL.md   # /monte-carlo — MC simulation
+│   │   ├── data-reading/SKILL.md  # /data-reading — data format & API
+│   │   ├── log-notion/SKILL.md    # /log-notion — Notion logging
+│   │   └── notebooklm-research/SKILL.md  # /notebooklm-research
+│   ├── agents/
+│   │   ├── build-runner.md        # Compile & run macros
+│   │   ├── code-explorer.md       # Read-only codebase navigation
+│   │   ├── data-inspector.md      # ROOT file inspection
+│   │   ├── knowledge-researcher.md # Web/NotebookLM research
+│   │   └── physics-reviewer.md    # Physics correctness review
+│   └── hooks/
+│       ├── block-dangerous.sh     # Block rm -rf, chmod -R, etc.
+│       ├── post-edit-reminder.sh  # Remind to commit_edit after edits
+│       ├── post-compact-context.sh # Inject context after compaction
+│       ├── stop-checkpoint.sh     # Post-task lesson/doc checkpoint
+│       └── notify.sh              # macOS notification on completion
+├── scripts/
+│   ├── remote_mcp_server.py       # MCP server (primary interface)
+│   ├── remote_cli.sh              # CLI helper (fallback/extras)
+│   ├── local_tmux_init.sh         # Local tmux session setup
+│   ├── discord_bot.py             # Discord bot for remote requests
+│   └── start_discord_bot.sh       # Bot startup script
 ├── config/
-│   └── discord_webhook.txt    # Discord webhook (optional)
-├── docs/                      # Analysis documentation
-├── output/                    # Downloaded outputs
-├── QA/                        # Downloaded QA plots
-├── scripts/                   # Temporary execution scripts
-└── todo/                      # Task tracking
+│   └── discord_webhook.txt.example # Discord webhook URL template
+├── docs/                          # Analysis knowledge base
+├── todo/                          # Task tracking
+│   └── todo_template.md           # Standard todo format
+├── output/                        # Downloaded output files
+├── QA/                            # Downloaded QA plots
+├── .mcp.json                      # MCP server registration
+└── .gitignore
 ```
 
 ### Remote (Your Working Directory)
 
 ```
-your-workdir/
-├── macro/
-│   ├── commonFunctions.C      # Shared utility functions
-│   ├── commonParams.C         # Global parameters
-│   ├── ReadParam.C            # JSON parser
-│   └── yourAnalysis.C         # Your analysis macros
-├── param/                     # JSON parameter files
-├── root/                      # Output ROOT files
-├── pic/                       # Output PDF files
-└── log/                       # Analysis logs
+<PROJECT_DIR>/
+├── macro/          # ROOT analysis macros
+│   ├── commonFunctions.C
+│   ├── commonParams.C
+│   ├── ReadParam.C
+│   └── yourAnalysis.C
+├── param/          # JSON parameter files
+├── common/         # Shared modules
+├── root/           # Output ROOT files
+├── pic/            # Output PDF files
+└── log/            # Analysis logs
 ```
 
----
+## MCP Tools Reference
 
-## Customization
+The MCP server exposes these tools to Claude:
 
-### 1. Edit CLAUDE.md
+### File Editing (via nvim)
 
-The main configuration file is `.claude/CLAUDE.md`. Update these settings:
+| Tool | Description |
+|------|-------------|
+| `open_file(path)` | Open file in nvim |
+| `replace(old, new)` | Global substitution |
+| `insert_after(line, text)` | Insert text after line |
+| `bulk_insert(line, text)` | Insert large block |
+| `delete_lines(start, end)` | Delete line range |
+| `commit_edit(path, summary)` | Save + generate diff report |
+| `read_file(path)` | Read file contents |
+| `write_new_file(path, content)` | Create new file |
 
-```markdown
-## Environment
+### Command Execution
 
-| Item | Value |
-|------|-------|
-| **WORKDIR** | `~/your/working/directory/` |
-| **Shell** | bash (or tcsh, zsh) |
-| **SSH alias** | `myserver` |
-| **tmux session** | `claude` |
+| Tool | Description |
+|------|-------------|
+| `run(cmd)` | Execute command (auto-closes nvim) |
+| `run_output(lines)` | Capture terminal output |
+| `run_busy()` | Check if process is running |
+| `run_kill()` | Send Ctrl+C |
+
+### Parallel Sessions
+
+| Tool | Description |
+|------|-------------|
+| `term_new(name)` | Create named tmux session |
+| `term_send(name, cmd)` | Send command to session |
+| `term_output(name, lines)` | Capture session output |
+| `term_close(name)` | Kill session |
+
+### nvim Tabs
+
+| Tool | Description |
+|------|-------------|
+| `tab_open(path)` | Open file in new tab |
+| `tab_list()` | List open tabs |
+| `tab_switch(n)` | Switch to tab n |
+| `tab_close()` | Close current tab |
+
+## Customization Guide
+
+### Step 1: Server Configuration
+
+Edit `scripts/remote_mcp_server.py`:
+
+```python
+REMOTE = "remote-server"           # Your SSH alias
+SESSION = "claude"                  # Remote tmux session name
+WORKDIR = "/home/<USER>/<PROJECT>"  # Remote working directory
+SETUP_CMD = "source <SETUP_SCRIPT>" # Environment setup command
+LOCAL_PANE = "remote-server:view.0" # Local tmux pane
 ```
 
-### 2. Adapt Skills
+### Step 2: CLAUDE.md
 
-Edit files in `.claude/skills/` to match your environment:
+Edit `.claude/CLAUDE.md` with your environment details (WORKDIR, shell, tmux names).
 
-- Update paths in `run-macro.md`
-- Change ROOT command (`root` vs custom wrapper)
-- Modify output patterns in `check-tmux.md`
+### Step 3: Add Your Documentation
 
-### 3. Add Your Documentation
+Build up `docs/` as you work. Recommended structure:
 
-Add analysis-specific docs in `docs/`:
-- Cut definitions
-- Physics background
-- Histogram naming conventions
-
-### 4. Define Macro Rules
-
-Edit `.claude/rules/macro-rules.md` for your coding standards:
-- Naming conventions
-- Required includes
-- Output format requirements
-
----
-
-## Troubleshooting
-
-### Connection Issues
-
-**SSH connection fails**
-```bash
-# Test connectivity
-ssh myserver "hostname"
-
-# Regenerate control socket
-rm ~/.ssh/sockets/*
-ssh myserver "echo 'reconnected'"
+```
+docs/
+├── analysis/       # Your analysis methods, cuts, results
+├── experiment/     # Experiment knowledge (detectors, PID, kinematics)
+├── root-api/       # ROOT/framework coding patterns
+├── simulation/     # MC generation chain
+├── computing/      # Remote server infrastructure
+├── workflow/       # Notion, Discord, QA procedures
+└── lessons/        # Mistake log for self-improvement
 ```
 
-**tmux session doesn't exist**
-```bash
-ssh myserver "tmux new-session -d -s claude"
-```
+### Step 4: Adapt Rules
 
-### Analysis Issues
-
-**ROOT session stuck**
-```bash
-# Graceful quit
-/kill-root quit
-
-# Force interrupt
-/kill-root interrupt
-
-# Kill process
-/kill-root force
-```
-
-**Shell quoting errors**
-
-Never pass parentheses directly via SSH. The `/run-macro` skill handles this by creating script files.
-
-**Edit not finding text**
-- Check exact whitespace (spaces vs tabs)
-- Verify the file path is correct
-- Read the file first to see current content
-
-### Getting Help
-
-```bash
-# List available skills
-ls .claude/skills/
-
-# View skill documentation
-cat .claude/skills/run-macro.md
-```
-
----
+Review and edit `.claude/rules/`:
+- `coding.md` — Your macro naming conventions and coding style
+- `safety.md` — Allowed/forbidden operations for your environment
+- `editing.md` — Adjust MCP tool references if needed
 
 ## Integration Options
 
-### Discord (QA Uploads)
+### Discord Bot
 
-1. Create a Discord webhook
-2. Save URL to `config/discord_webhook.txt`
-3. Use `/upload-qa` to share plots
+Automated analysis requests from your phone/browser:
 
-### Notion (Logging)
+1. Create a Discord bot ([Developer Portal](https://discord.com/developers/applications))
+2. Save token to `config/discord_bot_token.txt`
+3. Save webhook URL to `config/discord_webhook.txt`
+4. Run `./scripts/start_discord_bot.sh`
+5. Send `@request: <task>` in your Discord channel
 
-1. Set up Notion MCP integration
-2. Configure page ID in `CLAUDE.md`
-3. Use `/log-notion` to create entries
+See `scripts/README_discord_bot.md` for full setup guide.
 
----
+### Notion Logging
 
-## Writing Macros
+1. Set up [Notion MCP integration](https://github.com/anthropics/claude-code)
+2. Set parent page ID in `.claude/rules/communication.md`
+3. Use `/log-notion` skill or natural language
 
-### Naming Convention
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| SSH connection fails | Check `~/.ssh/config`, verify VPN, test with `ssh remote-server hostname` |
+| Remote tmux missing | `ssh remote-server "tmux new -d -s claude"` or use `init()` MCP tool |
+| Local tmux missing | `./scripts/local_tmux_init.sh` |
+| ROOT not found | Check remote shell config (`.bashrc`/`.cshrc`) |
+| ROOT session stuck | `run_kill()` then `run(".q")`, or `run("pkill -f root.exe")` |
+| nvim stuck in INSERT | `tmux send-keys -t remote-server:view.0 Escape` then `ZQ` |
+| MCP server not starting | Check `uv` is installed: `pip install uv` |
+| Shell quoting errors | MCP `run(cmd)` handles quoting via local tmux — avoid raw SSH |
+
+## Macro Conventions
+
+### Naming
 
 | Type | Pattern | Example |
 |------|---------|---------|
 | Study | `study<Topic>.C` | `studyAcceptance.C` |
 | Selection | `select<What>.C` | `selectEvents.C` |
 | Calculation | `calc<What>.C` | `calcEfficiency.C` |
+| Application | `apply<What>.C` | `applyCorrection.C` |
 | Comparison | `compare<What>.C` | `compareDataMC.C` |
+| Plot | `plot<What>.C` | `plotResults.C` |
+
+### Standard Flow
+
+```
+INPUT → HISTOGRAMS → EVENT LOOP → POST-LOOP → CANVAS → OUTPUT
+```
 
 ### Minimal Template
 
@@ -420,9 +338,7 @@ cat .claude/skills/run-macro.md
 #include "commonParams.C"
 #include "ReadParam.C"
 
-void analysis(std::string param_file="../param/params.json"){
-
-    // Load parameters
+void analysis(std::string param_file = "../param/params.json") {
     ReadParam* rp = new ReadParam(param_file);
     rp->ConfigParams();
     rp->PrintParams();
@@ -430,25 +346,23 @@ void analysis(std::string param_file="../param/params.json"){
     gROOT->SetBatch(par::batch_flag);
     gBenchmark->Start("timer");
 
-    // Your analysis code here...
+    // INPUT: Load data
+    // HISTOGRAMS: Define histograms
+    // EVENT LOOP: Fill histograms
+    // POST-LOOP: Fit, calculate
+    // CANVAS: Draw
+    // OUTPUT: Save PDF and ROOT file
 
     gBenchmark->Show("timer");
 }
-
 #endif
 ```
 
-See `.claude/rules/macro-creation.md` for the complete guide.
-
----
-
 ## License
 
-MIT License - Feel free to adapt for your experiment.
-
----
+MIT License — Feel free to adapt for your experiment.
 
 ## Acknowledgments
 
 - [Claude Code](https://claude.ai/code) by Anthropic
-- ROOT Team at CERN
+- [ROOT](https://root.cern/) by CERN
