@@ -14,22 +14,71 @@
 ローカルマシン                               リモートサーバー
 ┌────────────────────────────┐            ┌────────────────────────────┐
 │  Claude Code CLI           │            │  tmux session "claude"     │
-│    │                       │    SSH     │    │                       │
-│    ├─ MCP Server ──────────┼───────────►│    ├─ nvim（ファイル編集） │
-│    │  (remote_mcp_server.py)│           │    └─ terminal（コマンド） │
-│    │                       │            │                            │
-│    ├─ Rules & Skills       │            │  作業ディレクトリ:          │
-│    ├─ Agents               │            │  ├── macro/  (ROOTマクロ)  │
-│    └─ Hooks                │            │  ├── param/  (JSON設定)    │
+│    │                       │            │    │                       │
+│    └─ MCP Server           │            │    ├─ nvim（ファイル編集） │
+│       (remote_mcp_server.py)│           │    └─ terminal（コマンド） │
+│       │                    │            │                            │
+│       ├─ Layer 1 ──────────┼──(tmux)──► │  （メインペイン、~0ms）   │
+│       └─ Layer 2 ──────────┼──(SSH)───► │  （並列セッション、~1s）  │
+│                            │            │                            │
+│  tmux "remote-server"      │            │  作業ディレクトリ:          │
+│    └─ pane 0: リモート     │            │  ├── macro/  (ROOTマクロ)  │
+│       tmuxにSSH接続済み ───┼───────────►│  ├── param/  (JSON設定)    │
 │                            │            │  ├── root/   (出力ROOT)    │
-│  tmux session "remote-server"│           │  ├── pic/    (出力PDF)     │
-│    └─ SSH → remote tmux    │            │  └── log/    (ログ)        │
+│  Rules, Skills, Agents,    │            │  ├── pic/    (出力PDF)     │
+│  Hooks                     │            │  └── log/    (ログ)        │
 └────────────────────────────┘            └────────────────────────────┘
 ```
 
-### 動作の仕組み
+### 2層コマンドトランスポート
 
-1. **MCPサーバー** (`scripts/remote_mcp_server.py`) がnvim経由のファイル編集、コマンド実行、セッション管理のツールをSSH越しに提供
+MCPサーバーはリモートサーバーとの通信に**2つの異なるトランスポート層**を使用します。この2層設計により、速度と機能性を両立しています。
+
+```
+                         ┌─────────────────────────────────────────┐
+                         │      Layer 1: ローカルtmuxリレー        │
+  Claude Code            │           （メインペイン）              │
+    │                    │                                         │
+    │  run("make")       │  tmux send-keys           SSH接続済み  │
+    │──────────────────► │  -t remote-server:view.0 ────────────► │ リモートシェル
+    │                    │       (~0ms)              (常時接続)    │ がコマンド実行
+    │                    │                                         │
+    │  run_output(50)    │  tmux capture-pane                     │
+    │◄────────────────── │  -t remote-server:view.0 ◄──────────── │ 画面内容取得
+    │                    └─────────────────────────────────────────┘
+    │
+    │                    ┌─────────────────────────────────────────┐
+    │                    │      Layer 2: 直接SSH                   │
+    │                    │      （ファイルI/O、並列セッション）    │
+    │                    │                                         │
+    │  read_file(path)   │  ssh remote-server "cat <path>"        │
+    │──────────────────► │       (~1.3s/回)                        │
+    │                    │                                         │
+    │  term_send(s, cmd) │  ssh remote-server                     │
+    │──────────────────► │    "tmux send-keys -t <s> ..."         │
+    │                    └─────────────────────────────────────────┘
+```
+
+**Layer 1 — ローカルtmuxリレー**（メインペインのコマンド: `run`, `run_output`, nvim編集）
+- ローカルtmuxペイン（`remote-server:view.0`）がリモートtmuxセッションへの持続的SSH接続を維持
+- コマンドは `tmux send-keys` でキーストロークとして送信、出力は `tmux capture-pane` でキャプチャ
+- **レイテンシ ~0ms** — コマンドごとのSSHラウンドトリップなし。SSH接続は確立済み
+- nvim編集やマクロ実行はこの仕組みで動作: キーストロークがローカルペイン経由でリモートターミナルに到達
+
+**Layer 2 — 直接SSH**（ファイル読み取り、並列セッション: `read_file`, `term_send`, `term_output`）
+- 構造化された出力が必要な操作に使用（ファイル内容、リモートtmuxコマンド）
+- 各呼び出しで新規SSHを実行: `ssh remote-server "..."`
+- **レイテンシ ~1.3s/回** だが、クリーンなプログラム的出力を返す
+- SSH ControlMasterが既存接続を再利用するため、認証オーバーヘッドなし
+
+**なぜ2層か？**
+- Layer 1は高速だが、画面スクレイピング出力のみ（ターミナルに見える内容）
+- Layer 2は低速だが、正確なファイル内容を返し、任意のリモートtmuxセッションを対象にできる
+- nvim検出（INSERTモード、ステータスバー）はLayer 1の画面キャプチャ解析で行う — リモートクエリ不要
+
+### コンポーネント
+
+1. **MCPサーバー** (`scripts/remote_mcp_server.py`) が2層トランスポートを通じてnvim経由のファイル編集、コマンド実行、セッション管理のツールを提供
 2. **Rules** (`.claude/rules/`) がコーディング規約、編集ワークフロー、安全ポリシー、コミュニケーションスタイルを定義
 3. **Skills** (`.claude/skills/`) がスラッシュコマンド（`/analysis`, `/plotting`, `/remote-ide` など）で一般的なワークフローをガイド
 4. **Agents** (`.claude/agents/`) がビルド、コード探索、データ検査、物理レビューの専門サブエージェント

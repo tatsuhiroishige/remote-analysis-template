@@ -14,22 +14,71 @@ This system lets you control particle physics analyses on remote servers through
 Local Machine                              Remote Server
 ┌────────────────────────────┐            ┌────────────────────────────┐
 │  Claude Code CLI           │            │  tmux session "claude"     │
-│    │                       │    SSH     │    │                       │
-│    ├─ MCP Server ──────────┼───────────►│    ├─ nvim (file editing)  │
-│    │  (remote_mcp_server.py)│           │    └─ terminal (commands)  │
-│    │                       │            │                            │
-│    ├─ Rules & Skills       │            │  Working Directory:        │
-│    ├─ Agents               │            │  ├── macro/   (ROOT macros)│
-│    └─ Hooks                │            │  ├── param/   (JSON config)│
+│    │                       │            │    │                       │
+│    └─ MCP Server           │            │    ├─ nvim (file editing)  │
+│       (remote_mcp_server.py)│           │    └─ terminal (commands)  │
+│       │                    │            │                            │
+│       ├─ Layer 1 ──────────┼──(tmux)──► │  (main pane, ~0ms)       │
+│       └─ Layer 2 ──────────┼──(SSH)───► │  (parallel sessions, ~1s) │
+│                            │            │                            │
+│  tmux "remote-server"      │            │  Working Directory:        │
+│    └─ pane 0: ssh attached │            │  ├── macro/   (ROOT macros)│
+│       to remote tmux ──────┼───────────►│  ├── param/   (JSON config)│
 │                            │            │  ├── root/    (output ROOT)│
-│  tmux session "remote-server"│           │  ├── pic/     (output PDF) │
-│    └─ SSH → remote tmux    │            │  └── log/     (logs)       │
+│  Rules, Skills, Agents,    │            │  ├── pic/     (output PDF) │
+│  Hooks                     │            │  └── log/     (logs)       │
 └────────────────────────────┘            └────────────────────────────┘
 ```
 
-### How It Works
+### Two-Layer Command Transport
 
-1. **MCP Server** (`scripts/remote_mcp_server.py`) provides tools for file editing (via nvim), command execution, and session management — all over SSH
+The MCP server uses **two distinct transport layers** to communicate with the remote server. This dual-layer design balances speed and capability.
+
+```
+                         ┌─────────────────────────────────────────┐
+                         │         Layer 1: Local tmux relay       │
+  Claude Code            │              (main pane)                │
+    │                    │                                         │
+    │  run("make")       │  tmux send-keys          Already SSH'd │
+    │──────────────────► │  -t remote-server:view.0 ────────────► │ remote shell
+    │                    │       (~0ms)              (persistent)  │ executes cmd
+    │                    │                                         │
+    │  run_output(50)    │  tmux capture-pane                     │
+    │◄────────────────── │  -t remote-server:view.0 ◄──────────── │ screen content
+    │                    └─────────────────────────────────────────┘
+    │
+    │                    ┌─────────────────────────────────────────┐
+    │                    │        Layer 2: Direct SSH              │
+    │                    │        (file I/O, parallel sessions)    │
+    │                    │                                         │
+    │  read_file(path)   │  ssh remote-server "cat <path>"        │
+    │──────────────────► │       (~1.3s per call)                  │
+    │                    │                                         │
+    │  term_send(s, cmd) │  ssh remote-server                     │
+    │──────────────────► │    "tmux send-keys -t <s> ..."         │
+    │                    └─────────────────────────────────────────┘
+```
+
+**Layer 1 — Local tmux relay** (main pane commands: `run`, `run_output`, nvim editing)
+- The local tmux pane (`remote-server:view.0`) maintains a persistent SSH connection to the remote tmux session
+- Commands are sent as keystrokes via `tmux send-keys`, output is captured via `tmux capture-pane`
+- **~0ms latency** — no SSH round-trip per command; the SSH connection is already established
+- This is how nvim editing and macro execution work: keystrokes flow through the local pane to the remote terminal
+
+**Layer 2 — Direct SSH** (file reads, parallel sessions: `read_file`, `term_send`, `term_output`)
+- Used for operations that need structured output (file contents, remote tmux commands)
+- Each call opens a new SSH invocation: `ssh remote-server "..."`
+- **~1.3s latency** per call, but returns clean programmatic output
+- SSH ControlMaster reuses the existing connection, so there's no authentication overhead
+
+**Why two layers?**
+- Layer 1 is fast but gives only screen-scraped output (what you'd see in a terminal)
+- Layer 2 is slower but returns exact file contents and can target any remote tmux session
+- nvim detection (INSERT mode, status bar) works by analyzing Layer 1 screen captures — no remote queries needed
+
+### Components
+
+1. **MCP Server** (`scripts/remote_mcp_server.py`) provides tools for file editing (via nvim), command execution, and session management through the two-layer transport
 2. **Rules** (`.claude/rules/`) define coding conventions, editing workflow, safety policies, and communication style
 3. **Skills** (`.claude/skills/`) are slash commands (`/analysis`, `/plotting`, `/remote-ide`, etc.) that guide Claude through common workflows
 4. **Agents** (`.claude/agents/`) are specialized subagents for building, code exploration, data inspection, and physics review
