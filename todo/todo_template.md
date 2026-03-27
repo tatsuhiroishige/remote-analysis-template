@@ -1,7 +1,7 @@
 # Analysis ToDo Specification (TEMPLATE)
 
 This document defines a standardized task specification format for AI agents
-performing physics data analysis via remote operation.
+performing physics data analysis via remote operation on remote server.
 
 AI agents must strictly follow the workflow below.
 
@@ -22,15 +22,15 @@ AI agents must:
    - variables
    - outputs
    - validation criteria
-7. Execute each subtask via SSH/tmux on remote server.
-8. Capture output to local `output/` directory.
+7. Execute each subtask via MCP tools (`run`, `open_file`, `commit_edit`, etc.).
+8. Capture output via `run_output()` or `term_output()`.
 9. Log results to Notion (if configured).
 10. After completing all subtasks, output a **Markdown report** summarizing:
     - Subtask list with status
     - Key figures and tables
     - Final numerical results
     - Short physics interpretation
-11. **Send report summary to Discord** (if configured).
+11. **Send report summary to Discord** using `mcp__discord__send-message`.
 
 ---
 
@@ -88,12 +88,18 @@ AI agents must:
     - <!-- physical or methodological checks -->
 
 - Execution:
-```bash
-WORKDIR=~/your/analysis/directory
-ssh $HOST "tmux send-keys -t claude 'cd $WORKDIR/macro' Enter"
-ssh $HOST "tmux send-keys -t claude 'root -b -q <macro>.C(\"../param/<params>.json\") >& ../log/<output>.log' Enter"
-# Wait for completion, then:
-ssh $HOST "tmux send-keys -t claude '.q' Enter"
+```
+# Edit macro if needed
+open_file("macro/<macro_name>.C")
+replace("old_value", "new_value")
+commit_edit("macro/<macro_name>.C", "Updated parameter")
+
+# Run analysis
+run("cd macro && root -l -b -q '<macro>.C(\"../param/<params>.json\")' >& ../log/<output>.log")
+
+# Monitor and check output
+run_busy()
+run_output(50)
 ```
 
 - Results:
@@ -155,13 +161,13 @@ ssh $HOST "tmux send-keys -t claude '.q' Enter"
 
 ---
 
-## Discord Notification (Optional)
+## Discord Notification
 
 After completing analysis, send summary to Discord:
 
 ```
-Channel: your-channel
-Server: your-server
+Channel: phd-analysis
+Server: Research
 ```
 
 **Message Format**:
@@ -192,6 +198,7 @@ Full report: `todo/<filename>.md`
 
 - Do not modify existing macros without explicit user approval.
 - Always search for existing macros before proposing new ones.
-- All analysis runs on remote server via tmux session "claude".
-- Redirect all output to log files (`>& *.log`).
-- Capture tmux output locally after each command.
+- All analysis runs on remote server via MCP tools (`run`, `term_send`).
+- Use `run_output()` and `term_output()` to capture results.
+- All file editing via MCP nvim tools (`open_file`, `replace`, `commit_edit`).
+- Always call `commit_edit()` after every edit to generate diff report.

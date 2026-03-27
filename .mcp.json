@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "remote-server": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "scripts/remote_mcp_server.py"
+      ],
+      "env": {}
+    }
+  }
+}
