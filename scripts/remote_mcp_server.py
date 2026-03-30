@@ -33,10 +33,10 @@ from mcp.server.fastmcp import FastMCP
 # Constants
 # ──────────────────────────────────────────────
 
-REMOTE = "remote-server"
+REMOTE = "farm43"
 SESSION = "claude"
-WORKDIR = "/home/<USER>/<PROJECT_DIR>"
-SETUP_CMD = "source <SETUP_SCRIPT>"
+WORKDIR = "/home/tatsu/E12"
+SETUP_CMD = ""
 
 # Local tmux pane that is SSH'd into remote server
 LOCAL_PANE = "remote-server:view.0"
@@ -517,7 +517,7 @@ def run_kill() -> str:
 # ──────────────────────────────────────────────
 
 
-REMOTE_TMUX_PREFIX = "C-a"
+REMOTE_TMUX_PREFIX = "C-f"
 
 
 def _detach_remote():
@@ -530,7 +530,7 @@ def _detach_remote():
 
 def _attach_remote():
     """Re-attach to the remote tmux session."""
-    _local_send_literal(f"tmux attach -t {SESSION}")
+    _local_send_literal(f"TERM=xterm-256color tmux attach -t {SESSION}")
     _local_send_keys("Enter")
     time.sleep(0.8)
 

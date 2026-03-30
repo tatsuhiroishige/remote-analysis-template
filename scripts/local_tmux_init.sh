@@ -13,7 +13,7 @@ SESSION="remote-server"
 tmux has-session -t "$SESSION" 2>/dev/null || \
   tmux new-session -d -s "$SESSION" -n view
 
-tmux send-keys -t "$SESSION:view" "ssh -t remote-server 'tmux attach -t claude'" Enter
+tmux send-keys -t "$SESSION:view" "TERM=xterm-256color ssh -t farm43 'tmux attach -t claude'" Enter
 
 echo "Local tmux session '$SESSION' created."
 echo "Run: tmux attach -t $SESSION"

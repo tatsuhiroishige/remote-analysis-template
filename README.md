@@ -88,13 +88,22 @@ The MCP server uses **two distinct transport layers** to communicate with the re
 
 ### 1. SSH Access with ControlMaster
 
-Add to `~/.ssh/config`:
+Add ControlMaster settings to `~/.ssh/config`. **If you connect through proxy/jump hosts, add ControlMaster to every host in the chain** — not just the final target:
 
 ```
-Host remote-server
-    HostName your-server.example.com
+Host jump-host
+    HostName jump.example.com
     User your-username
     IdentityFile ~/.ssh/id_rsa
+    ControlMaster auto
+    ControlPath ~/.ssh/sockets/%r@%h-%p
+    ControlPersist 600
+
+Host remote-server
+    HostName target.example.com
+    User your-username
+    IdentityFile ~/.ssh/id_rsa
+    ProxyCommand ssh -W %h:%p jump-host
     ControlMaster auto
     ControlPath ~/.ssh/sockets/%r@%h-%p
     ControlPersist 600
@@ -107,8 +116,17 @@ ssh remote-server "echo 'Connection OK'"
 
 ### 2. Remote tmux Session
 
+Create the remote tmux session **before** running `local_tmux_init.sh` (step 3 in Quick Start). The local script tries to attach to this session immediately:
+
 ```bash
-ssh remote-server "tmux new-session -d -s claude"
+ssh remote-server "tmux new-session -d -s claude -n ide"
+```
+
+Check the remote tmux prefix key and set `REMOTE_TMUX_PREFIX` in `scripts/remote_mcp_server.py` to match:
+
+```bash
+ssh remote-server "tmux show-option -g prefix"
+# e.g. "prefix C-b" → REMOTE_TMUX_PREFIX = "C-b"
 ```
 
 ### 3. Claude Code CLI
@@ -334,8 +352,9 @@ See `scripts/README_discord_bot.md` for full setup guide.
 | Issue | Solution |
 |-------|----------|
 | SSH connection fails | Check `~/.ssh/config`, verify VPN, test with `ssh remote-server hostname` |
-| Remote tmux missing | `ssh remote-server "tmux new -d -s claude"` or use `init()` MCP tool |
+| Remote tmux missing | `ssh remote-server "tmux new -d -s claude -n ide"` or use `init()` MCP tool |
 | Local tmux missing | `./scripts/local_tmux_init.sh` |
+| `open terminal failed: missing or unsuitable terminal: tmux-256color` | Remote server lacks `tmux-256color` terminfo. Prefix SSH with `TERM=xterm-256color` in `local_tmux_init.sh` |
 | ROOT not found | Check remote shell config (`.bashrc`/`.cshrc`) |
 | ROOT session stuck | `run_kill()` then `run(".q")`, or `run("pkill -f root.exe")` |
 | nvim stuck in INSERT | `tmux send-keys -t remote-server:view.0 Escape` then `ZQ` |
