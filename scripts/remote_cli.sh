@@ -8,11 +8,11 @@
 #
 # Usage: ./scripts/remote_cli.sh <command> [args...]
 
-REMOTE="farm43"
+REMOTE="myserver"
 SESSION="claude"
-LOCAL_PANE="remote-server:view.0"
+LOCAL_PANE="myserver:view.0"
 MAIN="$SESSION:ide.0"
-WORKDIR="/home/tatsu/E12"
+WORKDIR="/home/user/analysis"
 
 # --- Internal: remote tmux command (SSH only, no socket) ---
 _rtmux() {
