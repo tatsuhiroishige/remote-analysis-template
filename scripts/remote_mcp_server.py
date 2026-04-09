@@ -544,24 +544,70 @@ def run_kill() -> str:
 # ──────────────────────────────────────────────
 
 
+def _local_pane_state() -> str:
+    """Detect the state of the local tmux pane.
+
+    Returns one of:
+      "remote_tmux"  — SSH alive, attached to remote tmux session
+      "remote_shell" — SSH alive, at remote shell prompt (not in tmux)
+      "local_shell"  — at local shell prompt (SSH not running)
+    """
+    r = subprocess.run(
+        ["tmux", "display-message", "-t", LOCAL_PANE, "-p",
+         "#{pane_current_command}"],
+        capture_output=True, text=True, timeout=5,
+    )
+    current_cmd = r.stdout.strip()
+    if current_cmd != "ssh":
+        return "local_shell"
+    # SSH is running — check if inside remote tmux via status bar
+    output = _local_capture(3)
+    if f"Session: {SESSION}" in output:
+        return "remote_tmux"
+    return "remote_shell"
+
+
 def _detach_remote():
-    """Detach from remote tmux."""
-    _local_send_keys(REMOTE_TMUX_PREFIX)
-    time.sleep(0.2)
-    _local_send_keys("d")
-    time.sleep(0.5)
+    """Detach from remote tmux only if currently attached.
+
+    After detach, lands at the remote shell (persistent SSH session).
+    If already at remote shell or local shell, handles accordingly.
+    """
+    state = _local_pane_state()
+    if state == "remote_tmux":
+        _local_send_keys(REMOTE_TMUX_PREFIX)
+        time.sleep(0.2)
+        _local_send_keys("d")
+        time.sleep(0.5)
+    elif state == "local_shell":
+        _local_send_literal(f"TERM=xterm-256color ssh -t {REMOTE}")
+        _local_send_keys("Enter")
+        time.sleep(3)
+    # "remote_shell" — already at remote prompt, nothing to do
 
 
 def _attach_remote():
-    """Re-attach to the remote tmux session."""
-    _local_send_literal(f"tmux attach -t {SESSION}")
-    _local_send_keys("Enter")
-    time.sleep(0.3)
+    """Re-attach to the remote tmux session if not already attached."""
+    state = _local_pane_state()
+    if state == "remote_tmux":
+        return  # already attached
+    if state == "remote_shell":
+        _local_send_literal(f"tmux attach -t {SESSION}")
+        _local_send_keys("Enter")
+        time.sleep(0.3)
+    elif state == "local_shell":
+        _local_send_literal(f"TERM=xterm-256color ssh -t {REMOTE}")
+        _local_send_keys("Enter")
+        time.sleep(3)
+        _local_send_literal(f"tmux attach -t {SESSION}")
+        _local_send_keys("Enter")
+        time.sleep(0.3)
 
 
 def _remote_shell_cmd(cmd: str):
     """Run a command on the remote shell via detach -> cmd -> re-attach.
-    Works even when the main pane is busy.
+
+    Checks pane state before detach/attach to avoid command corruption.
     """
     _detach_remote()
     _local_send_literal(cmd)
