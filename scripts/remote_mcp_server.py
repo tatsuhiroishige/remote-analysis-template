@@ -4,21 +4,27 @@
 # dependencies = ["mcp[cli]"]
 # ///
 """
-Remote server MCP Server v5 — No Socket, CLI-based
+Remote MCP Server — No Socket, CLI-based
 
 Two-layer transport:
-  1. Local send-keys  (tmux send-keys -t remote-server:view.0)  → ~0ms   keystroke relay
-  2. SSH              (ssh remote-server "...")                   → ~1.3s  filesystem + remote tmux
+  1. Local send-keys  (tmux send-keys -t <local_pane>)  → ~0ms   keystroke relay
+  2. SSH              (ssh <remote> "...")                → ~1.3s  filesystem + remote tmux
 
 Architecture:
-  - Main session "claude:ide" has a single pane (terminal)
+  - Main session has a single pane (terminal)
   - nvim is opened on demand, not persistent
-  - Parallel tasks use separate tmux sessions (term_new)
-  - No socket forwarding (removed in v5)
+  - Parallel tasks use separate tmux windows (term_new)
+  - No socket forwarding needed
 
 Usage:
     Registered in .claude/settings.json as the "remote-server" MCP server.
     Claude Code launches this automatically via stdio transport.
+
+Setup:
+    1. Edit the Constants section below to match your environment
+    2. Ensure SSH config has ControlMaster for connection reuse
+    3. Create local tmux session: tmux new -d -s <LOCAL_SESSION>
+    4. In the local pane, SSH into remote and attach to tmux session
 """
 
 import os
@@ -30,22 +36,25 @@ import re
 from mcp.server.fastmcp import FastMCP
 
 # ──────────────────────────────────────────────
-# Constants
+# Constants — EDIT THESE TO MATCH YOUR SETUP
 # ──────────────────────────────────────────────
 
-REMOTE = "farm43"
-SESSION = "claude"
-WORKDIR = "/home/tatsu/E12"
-SETUP_CMD = ""
+REMOTE = "myserver"                          # SSH alias from ~/.ssh/config
+SESSION = "claude"                           # Remote tmux session name
+WORKDIR = "/home/user/analysis"              # Remote working directory
+SETUP_CMD = ""                               # Optional: env setup command (e.g. "source /opt/env.sh")
 
 # Local tmux pane that is SSH'd into remote server
-LOCAL_PANE = "remote-server:view.0"
+LOCAL_PANE = "myserver:view.0"               # <local_session>:<window>.<pane>
 
 # Remote pane target (single pane)
 PANE_MAIN = f"{SESSION}:ide.0"
 
 # Shell names that indicate an idle prompt
 IDLE_SHELLS = ("bash", "zsh", "sh", "tcsh", "csh")
+
+# Remote tmux prefix key (default: C-b, some configs use C-a)
+REMOTE_TMUX_PREFIX = "C-b"
 
 # ──────────────────────────────────────────────
 # Layer 1: Local tmux (instant keystrokes)
@@ -58,10 +67,25 @@ def _local_send_keys(*args: str):
 
 
 def _local_send_literal(text: str):
-    """Send literal text to the local tmux pane (no interpretation)."""
-    subprocess.run(
-        ["tmux", "send-keys", "-t", LOCAL_PANE, "-l", text], check=False
-    )
+    """Send literal text to the local tmux pane (no interpretation).
+    Note: -l flag loses semicolons through local->SSH->remote tmux relay.
+    Fix: split on ';', send text parts with -l, send ';' with -H 3b (hex).
+    """
+    if ";" not in text:
+        subprocess.run(
+            ["tmux", "send-keys", "-t", LOCAL_PANE, "-l", text], check=False
+        )
+    else:
+        parts = text.split(";")
+        for i, part in enumerate(parts):
+            if part:
+                subprocess.run(
+                    ["tmux", "send-keys", "-t", LOCAL_PANE, "-l", part], check=False
+                )
+            if i < len(parts) - 1:
+                subprocess.run(
+                    ["tmux", "send-keys", "-t", LOCAL_PANE, "-H", "3b"], check=False
+                )
 
 
 def _local_capture(lines: int = 50) -> str:
@@ -85,7 +109,7 @@ def _ssh(cmd: str, timeout: int = 30, input_text: str | None = None) -> str:
         capture_output=True, text=True, timeout=timeout,
         input=input_text,
     )
-    # Filter out module load messages
+    # Filter out module load messages (common on HPC systems)
     lines = r.stdout.splitlines()
     filtered = [l for l in lines if not re.match(r'^\s*(Loading |WARNING|requirement)', l)]
     return "\n".join(filtered)
@@ -210,12 +234,12 @@ def _exit_nvim():
     # 2. Save all and quit
     _local_send_literal(":wa")
     _local_send_keys("Enter")
-    time.sleep(0.2)
-    _local_send_keys("Escape")
     time.sleep(0.1)
+    _local_send_keys("Escape")
+    time.sleep(0.05)
     _local_send_literal(":qa!")
     _local_send_keys("Enter")
-    time.sleep(0.3)
+    time.sleep(0.15)
     # 3. Wait for exit (up to 3s)
     for _ in range(30):
         if not _is_nvim_running():
@@ -227,7 +251,7 @@ def _exit_nvim():
     _local_send_keys("Z")
     time.sleep(0.05)
     _local_send_keys("Q")
-    time.sleep(0.5)
+    time.sleep(0.3)
     return not _is_nvim_running()
 
 
@@ -262,14 +286,15 @@ def init() -> str:
     )
 
     # Verify local tmux session exists
+    local_session = LOCAL_PANE.split(":")[0]
     r = subprocess.run(
-        ["tmux", "has-session", "-t", "remote-server"],
+        ["tmux", "has-session", "-t", local_session],
         capture_output=True,
     )
     if r.returncode != 0:
         return (
-            "ERROR: Local tmux session 'remote-server' not found. "
-            "Run: tmux new -d -s remote-server"
+            f"ERROR: Local tmux session '{local_session}' not found. "
+            f"Run: tmux new -d -s {local_session}"
         )
 
     return "Session initialized (single pane, no socket)"
@@ -297,37 +322,40 @@ def goto_line(n: int) -> str:
 
 @mcp.tool()
 def replace(old: str, new: str, flags: str = "g") -> str:
-    """Global substitution in the current nvim buffer."""
+    """Substitution in the current nvim buffer. Single-line only.
+    For multi-line replacements, use delete_lines() + bulk_insert()."""
     if "\n" not in old and "\n" not in new:
-        # Single-line: use :s with / delimiter (escaped)
         o = old.replace("/", "\\/")
         n = new.replace("/", "\\/")
-        nvim_cmd(f"%s/{o}/{n}/{flags}")
-    else:
-        # Multi-line: search in nvim, delete lines, paste insert
-        # 1. Search for first line of old text to position cursor
-        first_line = old.split("\n")[0]
-        num_lines = old.count("\n") + 1
+        _ensure_nvim()
         _escape_to_normal()
-        # Go to top of file first
         _local_send_keys("g")
         time.sleep(0.02)
         _local_send_keys("g")
         time.sleep(0.1)
-        # Search forward
+        # Jump to first match
+        _local_send_literal(f"/\\V{o}")
+        _local_send_keys("Enter")
+        time.sleep(0.2)
+        # Replace on current line only (no %)
+        nvim_cmd(f"s/\\V{o}/{n}/{flags}")
+    else:
+        first_line = old.split("\n")[0]
+        num_lines = old.count("\n") + 1
+        _escape_to_normal()
+        _local_send_keys("g")
+        time.sleep(0.02)
+        _local_send_keys("g")
+        time.sleep(0.1)
         _local_send_literal(f"/{first_line}")
         _local_send_keys("Enter")
         time.sleep(0.2)
-        # 2. Delete num_lines lines
         _local_send_literal(f"{num_lines}dd")
         time.sleep(0.2)
-        # 3. Write new text to remote temp file, then :read into nvim
         subprocess.run(
             ["ssh", REMOTE, "cat > ~/tmp/.replace_tmp"],
             input=new + "\n", text=True, check=False,
         )
-        # :read inserts below current line, so move up one line first
-        # (after dd, cursor is on the line that followed the deleted block)
         _local_send_keys("k")
         time.sleep(0.05)
         nvim_cmd("read ~/tmp/.replace_tmp")
@@ -354,27 +382,26 @@ def insert_after(line: int, text: str) -> str:
 
 @mcp.tool()
 def bulk_insert(line: int, text: str) -> str:
-    """Insert a large block of text after the given line using :set paste + insert mode."""
+    """Insert a large block of text after the given line using :set paste + insert mode.
+
+    WARNING: line=0 is unreliable. Use line >= 1 only.
+    To replace the beginning of a file: delete_lines(2, N) to keep line 1,
+    then bulk_insert(1, new_text), then delete_lines(1, 1) to remove the old line 1."""
     _ensure_nvim()
-    # Go to target line
     nvim_cmd(str(line))
     time.sleep(0.05)
-    # Enable paste mode and open new line below
     nvim_cmd("set paste")
     time.sleep(0.05)
     _local_send_keys("Escape")
     time.sleep(0.05)
-    # Open a new line below current line (enters insert mode)
     _local_send_keys("o")
     time.sleep(0.05)
-    # Send text literally (line by line to avoid tmux buffer issues)
     for i, chunk_line in enumerate(text.split("\n")):
         if i > 0:
             _local_send_keys("Enter")
             time.sleep(0.02)
         _local_send_literal(chunk_line)
         time.sleep(0.02)
-    # Exit insert mode and disable paste mode
     time.sleep(0.2)
     _escape_to_normal()
     nvim_cmd("set nopaste")
@@ -484,11 +511,11 @@ def commit_edit(path: str, summary: str) -> dict:
 
 @mcp.tool()
 def run(cmd: str) -> str:
-    """Execute a command in the main pane."""
+    """Execute a command in the main pane. Auto-closes nvim if open."""
     if _is_nvim_running():
         if not _exit_nvim():
-            return "ERROR: Could not close nvim. Use `tmux send-keys -t remote-server:view.0 Z Q` to force quit."
-        time.sleep(0.3)  # settle time for shell prompt
+            return "ERROR: Could not close nvim. Use local tmux to force quit (ZQ)."
+        time.sleep(0.15)
     send(cmd)
     return f"Sent command: {cmd}"
 
@@ -517,49 +544,42 @@ def run_kill() -> str:
 # ──────────────────────────────────────────────
 
 
-REMOTE_TMUX_PREFIX = "C-f"
-
-
 def _detach_remote():
-    """Detach from remote tmux (prefix: Ctrl-a)."""
+    """Detach from remote tmux."""
     _local_send_keys(REMOTE_TMUX_PREFIX)
     time.sleep(0.2)
     _local_send_keys("d")
-    time.sleep(1.5)
+    time.sleep(0.5)
 
 
 def _attach_remote():
     """Re-attach to the remote tmux session."""
-    _local_send_literal(f"TERM=xterm-256color tmux attach -t {SESSION}")
+    _local_send_literal(f"tmux attach -t {SESSION}")
     _local_send_keys("Enter")
-    time.sleep(0.8)
+    time.sleep(0.3)
 
 
 def _remote_shell_cmd(cmd: str):
-    """Run a command on the remote shell via detach → cmd → re-attach.
+    """Run a command on the remote shell via detach -> cmd -> re-attach.
     Works even when the main pane is busy.
     """
     _detach_remote()
     _local_send_literal(cmd)
     _local_send_keys("Enter")
-    time.sleep(0.5)
+    time.sleep(0.2)
     _attach_remote()
 
 
 @mcp.tool()
 def term_new(name: str) -> str:
-    """Create a new remote tmux window for parallel work.
-    Detaches from remote tmux, creates window, re-attaches.
-    """
+    """Create a new remote tmux window for parallel work."""
     _remote_shell_cmd(f"tmux new-window -d -n {name} -c {WORKDIR}")
     return f"Created window '{name}'"
 
 
 @mcp.tool()
 def term_send(name: str, cmd: str) -> str:
-    """Send a command to the named remote tmux window.
-    Sends command directly via send-keys -l for visibility.
-    """
+    """Send a command to the named remote tmux window."""
     _remote_shell_cmd(
         f"tmux send-keys -t :{name} -l {shlex.quote(cmd)}"
     )
@@ -571,15 +591,13 @@ def term_send(name: str, cmd: str) -> str:
 
 @mcp.tool()
 def term_output(name: str, lines: int = 50) -> str:
-    """Capture recent output from the named remote tmux window.
-    Detaches, runs capture-pane, captures local pane, re-attaches.
-    """
+    """Capture recent output from the named remote tmux window."""
     _detach_remote()
     _local_send_literal(
         f"tmux capture-pane -t :{name} -p -S -{lines}"
     )
     _local_send_keys("Enter")
-    time.sleep(0.5)
+    time.sleep(0.3)
     output = _local_capture(lines + 5)
     _attach_remote()
     return output
@@ -617,7 +635,7 @@ def term_list() -> str:
     _detach_remote()
     _local_send_literal("tmux list-windows")
     _local_send_keys("Enter")
-    time.sleep(0.5)
+    time.sleep(0.3)
     output = _local_capture(20)
     _attach_remote()
     return output

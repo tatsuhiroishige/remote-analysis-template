@@ -1,5 +1,5 @@
 #!/bin/bash
-# Hook: PreToolUse — Block dangerous commands on remote-server
+# Hook: PreToolUse — Block dangerous commands on remote server
 INPUT=$(cat)
 TOOL=$(echo "$INPUT" | jq -r '.tool_name // empty')
 CMD=""

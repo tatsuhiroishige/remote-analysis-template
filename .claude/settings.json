@@ -1,5 +1,4 @@
 {
-  "teammateMode": "in-process",
   "mcpServers": {
     "remote-server": {
       "command": "uv",

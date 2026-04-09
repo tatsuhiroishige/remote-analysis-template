@@ -1,6 +1,6 @@
 ---
 name: remote-ide
-description: tmux remote operation, remote connectivity, session management, and troubleshooting
+description: tmux remote operation, connectivity, session management, and troubleshooting
 ---
 
 # Remote Operations
@@ -15,15 +15,15 @@ MCP "remote-server" tools (primary)
  ├─ files:       read_file, write_new_file
  └─ tabs:        tab_open, tab_list, tab_switch, tab_next, tab_prev, tab_close
 
-./scripts/remote_cli.sh (fallback & extras)
+./scripts/ifarm_cli.sh (fallback & extras)
  └─ findlines, vim-view, vim-pagedown/up/top/bottom, capture-screen, status
 ```
 
-**MCP tools are the primary interface.** `remote_cli.sh` is for features MCP doesn't cover.
+**MCP tools are the primary interface.** CLI helper is for features MCP doesn't cover.
 
 ## Layout
 
-Remote tmux session `claude`, window `ide`: single pane (terminal).
+Remote tmux session, window `ide`: single pane (terminal).
 nvim is opened on demand, not persistent.
 
 ## Session Management
@@ -34,9 +34,9 @@ nvim is opened on demand, not persistent.
 init()   # Create/restore remote tmux session (idempotent)
 ```
 
-If local tmux session `remote-server` is missing:
+If local tmux session is missing:
 ```bash
-tmux new -d -s remote-server  # then attach SSH in pane 0
+tmux new -d -s <session>  # then attach SSH in pane 0
 ```
 
 ### Check Status
@@ -44,28 +44,25 @@ tmux new -d -s remote-server  # then attach SSH in pane 0
 ```
 run_busy()           # Is something running?
 run_output(10)       # Recent output
-term_list()          # All tmux sessions
+term_list()          # All tmux windows
 ```
 
-## Remote Server Status Check
+## Status Check
 
 | Check | How |
 |-------|-----|
 | SSH alive | `run("hostname")` + `run_output()` |
 | Remote tmux | `term_list()` |
-| WORKDIR exists | `run("ls macro/*.C \| wc -l")` + `run_output()` |
-| root | `run("which root")` + `run_output()` |
-| Recent output | `run("ls -lt root/*.root \| head -3")` + `run_output()` |
+| WORKDIR exists | `run("ls $WORKDIR")` + `run_output()` |
+| Recent output | `run("ls -lt $WORKDIR/output/")` + `run_output()` |
 
 ### Recovery Actions
 
-**SSH fails:** Check `~/.ssh/config` for `remote-server` alias, verify VPN.
+**SSH fails:** Check `~/.ssh/config` for alias, verify VPN/network.
 
-**Remote tmux session missing:** `init()` or `ssh remote-server "tmux new -d -s claude"`.
+**Remote tmux session missing:** `init()` recreates it.
 
-**Local tmux session missing:** `tmux new -d -s remote-server`.
-
-**root not found:** Check `.login` or `.cshrc`.
+**Local tmux session missing:** `tmux new -d -s <session>`.
 
 ## File Editing
 
@@ -75,7 +72,7 @@ nvim is opened on demand via MCP tools:
 # Open file
 open_file("macro/foo.C")
 
-# Substitution
+# Substitution (single-line only)
 replace("old_text", "new_text")
 
 # Insert after line 123
@@ -94,12 +91,12 @@ commit_edit("macro/foo.C", "Updated cut values")
 read_file("macro/foo.C")
 ```
 
-### Batch Grep (findlines) — remote_cli.sh only
+### Batch Grep (findlines) — CLI helper only
 
 Find line numbers in a single SSH call:
 
 ```bash
-./scripts/remote_cli.sh findlines templateFit.C 'void templateFit\|class BinAna\|=== SECTION'
+./scripts/ifarm_cli.sh findlines <file> '<pattern>'
 ```
 
 ### Efficient Multi-Point Editing
@@ -114,21 +111,19 @@ Find line numbers in a single SSH call:
 ```
 goto_line(100)              # Jump to line in nvim
 
-# For scrolling (remote_cli.sh only):
-./scripts/remote_cli.sh vim-view 100     # Jump + capture
-./scripts/remote_cli.sh vim-pagedown     # C-d
-./scripts/remote_cli.sh vim-pageup       # C-u
-./scripts/remote_cli.sh vim-top          # gg
-./scripts/remote_cli.sh vim-bottom       # G
+# For scrolling (CLI helper only):
+./scripts/ifarm_cli.sh vim-view 100     # Jump + capture
+./scripts/ifarm_cli.sh vim-pagedown     # C-d
+./scripts/ifarm_cli.sh vim-pageup       # C-u
 ```
 
-## Running Macros
+## Running Commands
 
 ### Standard Pattern
 
 ```
 # run() auto-closes nvim if open
-run("cd macro && root -l -b -q 'macroName.C(\"../param/params.json\")'")
+run("cd $WORKDIR && <your-command>")
 ```
 
 ### Monitor Progress
@@ -138,14 +133,14 @@ run_busy()          # Check process
 run_output(50)      # See output
 ```
 
-### Parallel Execution (separate sessions)
+### Parallel Execution (separate windows)
 
 ```
 term_new("job1")
-term_send("job1", "cd macro && root -l -b -q 'macro1.C'")
+term_send("job1", "cd $WORKDIR && <command1>")
 
 term_new("job2")
-term_send("job2", "cd macro && root -l -b -q 'macro2.C'")
+term_send("job2", "cd $WORKDIR && <command2>")
 
 term_output("job1", 50)
 term_output("job2", 50)
@@ -157,35 +152,26 @@ term_close("job2")
 ## Killing Stuck Processes
 
 ```
-Is ROOT responding?
-├── Yes (shows "root [N]") → run(".q")
-├── Slow (Processing...) → run_kill() then run(".q")
-└── No response → run("pkill -f 'root|root.exe'")
+Is the process responding?
+├── Yes → run("<quit-command>")
+├── Slow → run_kill() then run("<quit-command>")
+└── No response → run("pkill -f '<process-name>'")
 ```
 
 ## Fetching Output Files
 
 ```bash
-scp remote-server:$WORKDIR/root/<file>.root /Users/<LOCAL_USER>/path/to/remote-analysis/output/
-scp remote-server:$WORKDIR/pic/<file>.pdf /Users/<LOCAL_USER>/path/to/remote-analysis/QA/
+scp $SSH_ALIAS:$WORKDIR/output/<file> ./output/
+scp $SSH_ALIAS:$WORKDIR/pic/<file>.pdf ./QA/
 ```
 
 ## Common Issues
 
 | Issue | Solution |
 |-------|----------|
-| tcsh quoting errors | MCP `run(cmd)` sends via local tmux (handles quoting) |
-| ROOT stuck | `run_kill()` then check `run_busy()` |
+| Shell quoting errors | MCP `run(cmd)` sends via local tmux (handles quoting) |
+| Process stuck | `run_kill()` then check `run_busy()` |
 | nvim in wrong mode | MCP nvim tools send Escape first (automatic) |
 | SSH dropped | ControlMaster auto-reconnects on next call |
 | Remote tmux session lost | `init()` to recreate |
-| Local tmux session lost | `tmux new -d -s remote-server` |
-| `grep -P` fails | Remote grep doesn't support `-P`; use `-o` with basic regex |
-| capture出力にmodule loadメッセージ混入 | SSH接続時のmodule load出力。実害なし、出力末尾を読めばOK |
-| `\rm` vs `rm` on remote server | `rm` is aliased to `rm -i`. Use `\rm` to skip confirmation |
-
-## Knowledge References
-
-- [docs/root/macros/execution.md](../../docs/root/macros/execution.md) — Macro execution patterns and progress indicators
-- [docs/root/macros/paths.md](../../docs/root/macros/paths.md) — WORKDIR paths and directory layout
-- [docs/root/io/inspection.md](../../docs/root/io/inspection.md) — ROOT file inspection commands
+| Local tmux session lost | `tmux new -d -s <session>` |

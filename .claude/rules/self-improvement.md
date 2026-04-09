@@ -4,7 +4,7 @@
 
 When you make a mistake that is corrected by the user or discovered during work:
 
-1. **Identify the category**: coding, physics, workflow, or style
+1. **Identify the category**: coding, workflow, or other relevant category
 2. **Log it** in `docs/lessons/<category>.md`
 3. **Increment the count** in the HTML comment at the top
 4. **Add a row** to the table with: count, date, mistake description, correction, relevant rule/doc
@@ -30,16 +30,15 @@ The count in each lesson file tracks cumulative mistakes. This creates accountab
 ## Review Protocol
 
 Before starting a task, check if `docs/lessons/` has relevant entries:
-- Coding task → check `lessons/coding.md`
-- Physics analysis → check `lessons/physics.md`
-- Multi-step workflow → check `lessons/workflow.md`
+- Coding task -> check `lessons/coding.md`
+- Multi-step workflow -> check `lessons/workflow.md`
 
 ## Post-Task Checkpoint
 
 **After completing any multi-step task**, before reporting to the user:
 
 1. **Lessons**: Review the session for mistakes/corrections. Log any new entries to `docs/lessons/`.
-2. **Docs**: If new analysis results were produced, update relevant `docs/analysis/` files (cross-section values, pipeline changes, new macros).
-3. **MEMORY.md**: If a new stable pattern was confirmed, update memory.
+2. **Docs**: If new results were produced, update relevant `docs/` files.
+3. **Todo**: Update todo file status.
 
-This checkpoint is mandatory — do not skip it even if the task completed successfully.
+This checkpoint is mandatory -- do not skip it even if the task completed successfully.
