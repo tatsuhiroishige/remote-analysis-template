@@ -59,33 +59,31 @@ Create socket directory:
 mkdir -p ~/.ssh/sockets
 ```
 
-### 4. Configure constants
-
-Edit the constants in these files to match your environment:
-
-1. **`scripts/remote_mcp_server.py`** — `REMOTE`, `SESSION`, `WORKDIR`, `LOCAL_PANE`
-2. **`scripts/ifarm_cli.sh`** — `REMOTE`, `SESSION`, `LOCAL_PANE`, `WORKDIR`
-3. **`.claude/CLAUDE.md`** — Environment table
-4. **`.claude/hooks/post-compact-context.sh`** — Context reminder message
-
-### 5. Setup tmux sessions
+### 4. Run setup script
 
 ```bash
-# Remote: create tmux session
-ssh myserver "tmux new-session -d -s claude -n ide -c ~/your/analysis/directory"
-
-# Local: create tmux session with SSH view pane
-tmux new-session -d -s myserver -n view
-tmux send-keys -t myserver:view.0 "ssh myserver -t 'tmux attach -t claude'" Enter
+./setup.sh
 ```
 
-### 6. Start Claude Code
+The setup script will interactively:
+1. Ask for SSH alias, WORKDIR, shell, tmux session names
+2. Test SSH connectivity (supports OTP/2FA -- prompts for manual login if needed)
+3. Update all configuration files automatically
+4. Create remote directories and tmux session
+5. Create local tmux session with SSH view pane
+
+**Manual setup**: If you prefer to configure manually, edit the constants in:
+- `scripts/remote_mcp_server.py` -- `REMOTE`, `SESSION`, `WORKDIR`, `LOCAL_PANE`
+- `scripts/ifarm_cli.sh` -- same constants
+- `.claude/CLAUDE.md` -- Environment table
+
+### 5. Start Claude Code
 
 ```bash
 claude
 ```
 
-### 7. Run your first analysis
+### 6. Run your first analysis
 
 ```
 /start-analysis Run the acceptance study with default parameters

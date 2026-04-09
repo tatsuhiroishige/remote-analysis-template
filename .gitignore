@@ -15,6 +15,8 @@ scripts/*.py
 # Keep template scripts (committed to repo)
 !scripts/remote_mcp_server.py
 !scripts/ifarm_cli.sh
+!scripts/remote_cli.sh
+!scripts/local_tmux_init.sh
 
 # Output files (user-specific)
 output/*
